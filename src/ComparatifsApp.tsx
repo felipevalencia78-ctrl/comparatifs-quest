@@ -16,12 +16,13 @@ import {
 // =====================================================
 // Comparatifs Quest — version simplifiée (Home → Quiz)
 // Objectifs:
-// - Page 1: règles (sans bloc "Conseil") + bouton S’entraîner
+// - Page 1: règles + bouton S’entraîner
 // - Quiz: 20 questions, options mélangées, type affiché
 // - Rappel: bouton dépliable (sans supprimer le bouton Retour)
 // - Feedback: "Bravo !" / "Attention !" + explication didactique
 // - Exceptions en rouge
 // - Écran final: Revoir les réponses = affiche les réponses choisies + bouton Fermer
+// - Layout: centré (évite espace noir/décalage à droite)
 // =====================================================
 
 type Option = { id: string; text: string };
@@ -259,10 +260,8 @@ function runSelfTests() {
     console.assert(optIds.size === q.options.length, `Question ${q.id}: IDs d'options dupliqués`);
   }
 
-  // tests basiques de robustesse
   console.assert(/^q\d+$/.test(RAW_QUESTIONS[0].id), "IDs should look like q1, q2, ...");
 
-  // tests supplémentaires : acceptAlso doit être cohérent si présent
   const q15 = RAW_QUESTIONS.find((q) => q.id === "q15");
   console.assert(!!q15?.acceptAlso?.length, "q15 doit accepter une alternative");
   console.assert(q15?.acceptAlso?.includes("plus mal"), "q15 doit accepter 'plus mal'");
@@ -270,8 +269,9 @@ function runSelfTests() {
 
 // -------------------- UI --------------------
 const KEYWORDS = ["moins de", "autant de", "plus de", "moins", "autant", "aussi", "plus"];
-const splitRe = new RegExp(`(${KEYWORDS.map((k) => k.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|")})`, "gi");
-const isKeywordRe = new RegExp(`^(${KEYWORDS.map((k) => k.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|")})$`, "i");
+const escapeRe = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+const splitRe = new RegExp(`(${KEYWORDS.map(escapeRe).join("|")})`, "gi");
+const isKeywordRe = new RegExp(`^(${KEYWORDS.map(escapeRe).join("|")})$`, "i");
 
 function RuleCard({ title, subtitle, lines }: { title: string; subtitle: string; lines: string[] }) {
   const isException = title.toLowerCase().includes("exception");
@@ -294,7 +294,6 @@ function RuleCard({ title, subtitle, lines }: { title: string; subtitle: string;
   };
 
   const highlightKeywords = (text: string): ReactNode[] => {
-    // On évite les regex literals fragiles en JSX : regex construite via new RegExp
     const parts = text.split(splitRe).filter((p) => p !== "");
     return parts.map((part, idx) => {
       if (isKeywordRe.test(part)) {
@@ -359,8 +358,6 @@ export default function ComparatifsApp() {
   }, [view]);
 
   function start() {
-    // Comportement attendu : on démarre le quiz tel quel.
-    // Si tu veux réinitialiser score/xp au démarrage, dis-moi et je le fais.
     setView("quiz");
   }
 
@@ -384,7 +381,6 @@ export default function ComparatifsApp() {
     const selectedText = q.options.find((o) => o.id === selected)?.text ?? "";
     const ok = selected === q.correctId || (q.acceptAlso ?? []).includes(selectedText);
 
-    // Enregistre la réponse une fois par question (pas de doublons)
     setAttempts((prev) => {
       if (prev.some((a) => a.id === q.id)) return prev;
       return [
@@ -473,8 +469,8 @@ export default function ComparatifsApp() {
   })();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-5xl mx-auto px-4 py-6">
+    <div className="min-h-screen w-full bg-slate-50">
+      <div className="w-full max-w-4xl mx-auto px-4 py-6">
         {/* HEADER */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -486,20 +482,18 @@ export default function ComparatifsApp() {
 
           <div className="flex gap-3 text-sm">
             <span className="flex items-center gap-1 rounded-full bg-white px-3 py-2 ring-1 ring-slate-200 text-slate-900 font-semibold">
-            <Sparkles className="h-4 w-4 text-slate-700 shrink-0" />
-            XP {xp}
+              <Sparkles className="h-4 w-4 text-slate-700 shrink-0" /> XP {xp}
             </span>
             <span className="flex items-center gap-1 rounded-full bg-white px-3 py-2 ring-1 ring-slate-200 text-slate-900 font-semibold">
-            <Trophy className="h-4 w-4 text-slate-700 shrink-0" />
-            Score {score}/{total}
+              <Trophy className="h-4 w-4 text-slate-700 shrink-0" /> Score {score}/{total}
             </span>
           </div>
         </div>
 
         {/* HOME */}
         {view === "home" ? (
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 p-5">
+          <div className="grid gap-6">
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 p-5">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-slate-900 shrink-0" />
                 <div className="text-xl font-semibold text-slate-900">Tableau express des comparatifs</div>
@@ -539,7 +533,7 @@ export default function ComparatifsApp() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 max-w-md mx-auto w-full">
               <button
                 ref={focusRef}
                 onClick={start}
@@ -733,7 +727,9 @@ export default function ComparatifsApp() {
                     attempts.map((a, i) => (
                       <div
                         key={`${a.id}_${i}`}
-                        className={`rounded-xl p-4 ring-1 ${a.isCorrect ? "bg-emerald-50 ring-emerald-200" : "bg-rose-50 ring-rose-200"}`}
+                        className={`rounded-xl p-4 ring-1 ${
+                          a.isCorrect ? "bg-emerald-50 ring-emerald-200" : "bg-rose-50 ring-rose-200"
+                        }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
