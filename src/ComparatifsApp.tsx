@@ -19,7 +19,7 @@ import {
 // - Page 1: règles + bouton S’entraîner
 // - Quiz: 20 questions, options mélangées, type affiché
 // - Rappel: bouton dépliable (sans supprimer le bouton Retour)
-// - Feedback: "Bravo !" / "Attention !" + explication didactique (MANUELLE via q.explanation)
+// - Feedback: didactique (distracteur → fonction du distracteur → bonne forme + fonction)
 // - Exceptions en rouge
 // - Écran final: Revoir les réponses = affiche les réponses choisies + bouton Fermer
 // - Layout: centré (évite espace noir/décalage à droite)
@@ -242,7 +242,10 @@ function buildQuestions(): BuiltQuestion[] {
 // -------------------- "Tests" sans framework --------------------
 function runSelfTests() {
   console.assert(RAW_QUESTIONS.length === 20, "Il faut 20 questions");
-  console.assert(RAW_QUESTIONS.every((q) => q.explanation.trim().length > 0), "Chaque question doit avoir une explanation");
+  console.assert(
+    RAW_QUESTIONS.every((q) => q.explanation.trim().length > 0),
+    "Chaque question doit avoir une explanation"
+  );
 
   const built = buildQuestions();
   console.assert(built.length === 20, "buildQuestions doit produire 20 questions");
@@ -267,6 +270,13 @@ function runSelfTests() {
   const q15 = RAW_QUESTIONS.find((q) => q.id === "q15");
   console.assert(!!q15?.acceptAlso?.length, "q15 doit accepter une alternative");
   console.assert(q15?.acceptAlso?.includes("plus mal"), "q15 doit accepter 'plus mal'");
+
+  // mini-tests de logique feedback
+  console.assert(getCategoryFromType("infériorité (nom)") === "nom", "Catégorie (nom) KO");
+  console.assert(getRelationFromType("égalité (adverbe)") === "égalité", "Relation égalité KO");
+  console.assert(getRelationFromChoice("moins") === "infériorité", "Relation choix moins KO");
+  console.assert(getRelationFromChoice("autant de") === "égalité", "Relation choix autant de KO");
+  console.assert(getRelationFromChoice("plus") === "supériorité", "Relation choix plus KO");
 }
 
 // -------------------- UI --------------------
@@ -275,6 +285,111 @@ const escapeRe = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 const splitRe = new RegExp(`(${KEYWORDS.map(escapeRe).join("|")})`, "gi");
 const isKeywordRe = new RegExp(`^(${KEYWORDS.map(escapeRe).join("|")})$`, "i");
 
+// -------------------- FEEDBACK LOGIC (didactique) --------------------
+type Relation = "infériorité" | "égalité" | "supériorité" | "superlatif" | "autre";
+type Category = "nom" | "verbe" | "adjectif" | "adverbe" | "autre";
+
+function getRelationFromType(type: string): Relation {
+  const t = type.toLowerCase();
+  if (t.includes("superlatif")) return "superlatif";
+  if (t.includes("infériorité")) return "infériorité";
+  if (t.includes("égalité")) return "égalité";
+  if (t.includes("supériorité")) return "supériorité";
+  return "autre";
+}
+
+function getCategoryFromType(type: string): Category {
+  const t = type.toLowerCase();
+  if (t.includes("(nom)")) return "nom";
+  if (t.includes("(verbe)")) return "verbe";
+  if (t.includes("(adjectif)")) return "adjectif";
+  if (t.includes("(adverbe)")) return "adverbe";
+  if (t.includes("superlatif")) return "autre";
+  return "autre";
+}
+
+function getRelationFromChoice(choice: string): Relation {
+  const c = choice.toLowerCase().trim();
+  if (["meilleur", "meilleure", "meilleurs", "meilleures", "mieux", "pire"].includes(c)) return "superlatif";
+  if (c.startsWith("moins")) return "infériorité";
+  if (c.startsWith("plus")) return "supériorité";
+  if (c === "aussi" || c.startsWith("autant")) return "égalité";
+  return "autre";
+}
+
+function categoryLabel(cat: Category) {
+  if (cat === "nom") return "avec un nom";
+  if (cat === "verbe") return "avec un verbe";
+  if (cat === "adjectif") return "avec un adjectif";
+  if (cat === "adverbe") return "avec un adverbe";
+  return "";
+}
+
+function relationLabel(rel: Relation) {
+  if (rel === "infériorité") return "l’infériorité";
+  if (rel === "égalité") return "l’égalité";
+  if (rel === "supériorité") return "la supériorité";
+  if (rel === "superlatif") return "le superlatif";
+  return "la comparaison";
+}
+
+function explainWrongChoice(type: string, chosen: string, correct: string): string {
+  const targetRel = getRelationFromType(type);
+  const targetCat = getCategoryFromType(type);
+  const chosenRel = getRelationFromChoice(chosen);
+
+  // Cas “forme” (de / pas de, aussi/autant) très fréquents
+  const chosenL = chosen.toLowerCase();
+  const correctL = correct.toLowerCase();
+
+  // NOM: besoin de "de"
+  if (targetCat === "nom") {
+    if (!chosenL.includes(" de") && correctL.includes(" de")) {
+      return `Tu as choisi « ${chosen} ». Avec un nom, on utilise une forme avec « de » : on dit « ${correct} » + nom (pour exprimer ${relationLabel(targetRel)}).`;
+    }
+    if (chosenL.includes(" de") && !correctL.includes(" de")) {
+      return `Tu as choisi « ${chosen} ». Ici, on n’utilise pas « de » : on choisit « ${correct} » (pour exprimer ${relationLabel(targetRel)}).`;
+    }
+  }
+
+  // VERBE: pas de "de"
+  if (targetCat === "verbe" && chosenL.includes(" de")) {
+    return `Tu as choisi « ${chosen} ». Avec un verbe, on ne met pas « de » : on dit « ${correct} » + que.`;
+  }
+
+  // ADJ/ADV: égalité = aussi (pas autant)
+  if ((targetCat === "adjectif" || targetCat === "adverbe") && targetRel === "égalité" && chosenL === "autant") {
+    return `Tu as choisi « ${chosen} ». Pour exprimer l’égalité ${categoryLabel(targetCat)}, on utilise « aussi » (pas « autant »).`;
+  }
+
+  // VERBE: égalité = autant (pas aussi)
+  if (targetCat === "verbe" && targetRel === "égalité" && chosenL === "aussi") {
+    return `Tu as choisi « ${chosen} ». Pour exprimer l’égalité avec un verbe, on utilise « autant » (pas « aussi »).`;
+  }
+
+  // Superlatifs irréguliers
+  if (targetRel === "superlatif") {
+    return `Tu as choisi « ${chosen} ». Ici, on utilise une forme irrégulière (superlatif/comparatif irrégulier) : la bonne forme est « ${correct} ».`;
+  }
+
+  // Générique: fonction du distracteur
+  const catTxt = categoryLabel(targetCat);
+  return `Tu as choisi « ${chosen} ». « ${chosen} » sert plutôt à exprimer ${relationLabel(chosenRel)} ${catTxt}.`;
+}
+
+function explainCorrectChoice(type: string, correct: string): string {
+  const targetRel = getRelationFromType(type);
+  const targetCat = getCategoryFromType(type);
+  const catTxt = categoryLabel(targetCat);
+
+  if (targetRel === "superlatif") {
+    return `Pour cette phrase, on utilise la forme irrégulière « ${correct} » (superlatif/comparatif irrégulier).`;
+  }
+
+  return `Pour exprimer ${relationLabel(targetRel)} ${catTxt}, on utilise « ${correct} ».`;
+}
+
+// -------------------- RULE CARD --------------------
 function RuleCard({ title, subtitle, lines }: { title: string; subtitle: string; lines: string[] }) {
   const isException = title.toLowerCase().includes("exception");
 
@@ -376,12 +491,21 @@ export default function ComparatifsApp() {
     setAttempts([]);
   }
 
+  const selectedTextNow = (() => {
+    if (!q || !selected) return "";
+    return q.options.find((o) => o.id === selected)?.text ?? "";
+  })();
+
+  const isCorrectNow = (() => {
+    if (!submitted || !q || !selected) return null;
+    return selected === q.correctId || (q.acceptAlso ?? []).includes(selectedTextNow);
+  })();
+
   function verify() {
     if (!q || !selected || submitted) return;
     setSubmitted(true);
 
-    const selectedText = q.options.find((o) => o.id === selected)?.text ?? "";
-    const ok = selected === q.correctId || (q.acceptAlso ?? []).includes(selectedText);
+    const ok = selected === q.correctId || (q.acceptAlso ?? []).includes(selectedTextNow);
 
     setAttempts((prev) => {
       if (prev.some((a) => a.id === q.id)) return prev;
@@ -391,7 +515,7 @@ export default function ComparatifsApp() {
           id: q.id,
           type: q.type,
           prompt: q.prompt,
-          chosen: selectedText,
+          chosen: selectedTextNow,
           correct: q.correct,
           isCorrect: ok,
           acceptAlso: q.acceptAlso,
@@ -419,12 +543,6 @@ export default function ComparatifsApp() {
       return nextIndex;
     });
   }
-
-  const isCorrectNow = (() => {
-    if (!submitted || !q || !selected) return null;
-    const selectedTextNow = q.options.find((o) => o.id === selected)?.text ?? "";
-    return selected === q.correctId || (q.acceptAlso ?? []).includes(selectedTextNow);
-  })();
 
   return (
     <div className="min-h-screen w-full bg-slate-50">
@@ -572,22 +690,33 @@ export default function ComparatifsApp() {
                     {isCorrectNow ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
                   </div>
 
-                  {/* ✅ Feedback corrigé : 100% manuel via q.explanation */}
+                  {/* ✅ Feedback didactique : distracteur → fonction → bonne forme */}
                   <div className="mt-2 text-base font-bold text-slate-900">
                     {isCorrectNow ? (
                       <>
-                        Bravo ! Bonne réponse :{" "}
-                        <span className="underline">{q.correct}</span>.
+                        Bravo ! Tu as choisi <span className="underline">{selectedTextNow}</span>.
                       </>
                     ) : (
                       <>
-                        Attention ! La bonne réponse est :{" "}
-                        <span className="underline">{q.correct}</span>.
+                        Attention ! Tu as choisi <span className="underline">{selectedTextNow}</span>.
                       </>
                     )}
                   </div>
 
-                  <div className="mt-2 text-sm text-slate-700">{q.explanation}</div>
+                  <div className="mt-2 text-sm text-slate-700">
+                    {isCorrectNow ? (
+                      <>
+                        <div>{explainCorrectChoice(q.type, q.correct)}</div>
+                        <div className="mt-1">{q.explanation}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div>{explainWrongChoice(q.type, selectedTextNow, q.correct)}</div>
+                        <div className="mt-2 font-semibold">{explainCorrectChoice(q.type, q.correct)}</div>
+                        <div className="mt-1">{q.explanation}</div>
+                      </>
+                    )}
+                  </div>
 
                   {q.acceptAlso?.length ? (
                     <div className="mt-2 text-xs text-slate-600">On accepte aussi : {q.acceptAlso.join(" / ")}</div>
