@@ -19,7 +19,7 @@ import {
 // - Page 1: règles + bouton S’entraîner
 // - Quiz: 20 questions, options mélangées, type affiché
 // - Rappel: bouton dépliable (sans supprimer le bouton Retour)
-// - Feedback: "Bravo !" / "Attention !" + explication didactique
+// - Feedback: "Bravo !" / "Attention !" + explication didactique (MANUELLE via q.explanation)
 // - Exceptions en rouge
 // - Écran final: Revoir les réponses = affiche les réponses choisies + bouton Fermer
 // - Layout: centré (évite espace noir/décalage à droite)
@@ -242,6 +242,8 @@ function buildQuestions(): BuiltQuestion[] {
 // -------------------- "Tests" sans framework --------------------
 function runSelfTests() {
   console.assert(RAW_QUESTIONS.length === 20, "Il faut 20 questions");
+  console.assert(RAW_QUESTIONS.every((q) => q.explanation.trim().length > 0), "Chaque question doit avoir une explanation");
+
   const built = buildQuestions();
   console.assert(built.length === 20, "buildQuestions doit produire 20 questions");
 
@@ -418,54 +420,10 @@ export default function ComparatifsApp() {
     });
   }
 
-  const selectedTextNow = (() => {
-    if (!q || !selected) return "";
-    return q.options.find((o) => o.id === selected)?.text ?? "";
-  })();
-
-  const targetRel = (() => {
-    const t = q?.type ?? "";
-    if (t.includes("infériorité")) return "l’infériorité";
-    if (t.includes("égalité")) return "l’égalité";
-    if (t.includes("supériorité")) return "la supériorité";
-    if (t.toLowerCase().includes("superlatif")) return "le superlatif";
-    return "la comparaison";
-  })();
-
-  const targetCat = (() => {
-    const t = q?.type ?? "";
-    if (t.includes("(adverbe)")) return "avec un adverbe";
-    if (t.includes("(adjectif)")) return "avec un adjectif";
-    if (t.includes("(verbe)")) return "avec un verbe";
-    if (t.includes("(nom)")) return "avec un nom";
-    if (t.toLowerCase().includes("superlatif")) return "(forme irrégulière)";
-    return "";
-  })();
-
-  const chosenRel = (() => {
-    const c = selectedTextNow;
-    if (["plus", "plus de", "meilleur", "meilleure", "meilleurs", "meilleures", "mieux", "pire"].includes(c))
-      return "la supériorité";
-    if (["moins", "moins de"].includes(c)) return "l’infériorité";
-    if (["aussi", "autant", "autant de"].includes(c)) return "l’égalité";
-    return "un autre type de comparaison";
-  })();
-
   const isCorrectNow = (() => {
     if (!submitted || !q || !selected) return null;
+    const selectedTextNow = q.options.find((o) => o.id === selected)?.text ?? "";
     return selected === q.correctId || (q.acceptAlso ?? []).includes(selectedTextNow);
-  })();
-
-  const positiveFeedback = q
-    ? `Nous utilisons « ${selectedTextNow} » pour exprimer ${targetRel} ${targetCat}.`
-    : "";
-
-  const negativeFeedback = (() => {
-    if (!q) return "";
-    if (targetRel === "le superlatif") {
-      return `Nous utilisons « ${selectedTextNow} » ici, mais pour exprimer ${targetRel} ${targetCat}, nous utilisons « ${q.correct} ». `;
-    }
-    return `Nous utilisons « ${selectedTextNow} » pour exprimer ${chosenRel} ${targetCat}. Pour exprimer ${targetRel} ${targetCat}, nous utilisons « ${q.correct} ».`;
   })();
 
   return (
@@ -614,9 +572,22 @@ export default function ComparatifsApp() {
                     {isCorrectNow ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
                   </div>
 
+                  {/* ✅ Feedback corrigé : 100% manuel via q.explanation */}
                   <div className="mt-2 text-base font-bold text-slate-900">
-                    {isCorrectNow ? positiveFeedback : negativeFeedback}
+                    {isCorrectNow ? (
+                      <>
+                        Bravo ! Bonne réponse :{" "}
+                        <span className="underline">{q.correct}</span>.
+                      </>
+                    ) : (
+                      <>
+                        Attention ! La bonne réponse est :{" "}
+                        <span className="underline">{q.correct}</span>.
+                      </>
+                    )}
                   </div>
+
+                  <div className="mt-2 text-sm text-slate-700">{q.explanation}</div>
 
                   {q.acceptAlso?.length ? (
                     <div className="mt-2 text-xs text-slate-600">On accepte aussi : {q.acceptAlso.join(" / ")}</div>
